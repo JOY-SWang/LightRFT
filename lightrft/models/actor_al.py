@@ -30,7 +30,6 @@ class _AudioEmbedPositions(nn.Module):
     This plain ``nn.Module`` is not wrapped by FSDP2; its weight stays in the
     parent (root) FSDP unit and is all-gathered with the conv weights.
     """
-
     def __init__(self, embedding: nn.Embedding):
         super().__init__()
         self.weight = embedding.weight  # same Parameter, no copy

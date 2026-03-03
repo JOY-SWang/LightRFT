@@ -11,16 +11,13 @@ R1-AQA applies Group Relative Policy Optimization (GRPO) to Qwen2-Audio-7B-Instr
 ```
 examples/r1_aqa/
 ├── data_preprocess/
-│   └── avqa.py                          # Convert R1-AQA JSONL → LightRFT parquet
-├── audio_dataset.py                    # Audio multimodal pipeline extensions
-│   ├── AudioPromptDataset               # Dataset class for audio prompts
-│   ├── AudioMultimodalProcessor         # Audio feature extraction for pipeline
-│   └── patch_* functions                # Pipeline monkey-patches for audio
-├── reward_models_utils.py               # Rule-based reward (accuracy + format)
-├── train_colocate.py                    # GRPO training entry point
-├── eval_mmau.py                         # MMAU test-mini evaluation
-├── run_grpo_r1_aqa_qwen2_audio_7b.sh   # Training launch script
-└── README.md                            # This file
+│   └── avqa.py                        # Convert R1-AQA JSONL → LightRFT parquet
+├── audio_dataset.py                  # Audio multimodal pipeline extensions and patches
+├── reward_models_utils.py            # Rule-based reward (accuracy + format)
+├── train_colocate.py                 # GRPO training entry point
+├── eval.py                           # Evaluation script (e.g., MMAU-style tests)
+├── run_grpo_r1_aqa_qwen2_audio_7b.sh # Training launch script
+└── README.md                         # This file
 ```
 
 ## Quick Start
@@ -53,6 +50,14 @@ The JSONL file should have one JSON object per line with fields:
   "audio_path": "path/to/-HG3Omg_89c_30.wav"
 }
 ```
+or you can download data from https://huggingface.co/datasets/Joysw909/AVQA
+```bash
+huggingface-cli download --repo-type dataset --resume-download Joysw909/AVQA --local-dir path/to/AVQA
+cd path/to/AVQA
+mkdir -p all_audios
+# Copy all files from each VGG directory to all_audios
+cp VGG10000/* VGG20000/* VGG30000/* VGG40000/* all_audios/ 2>/dev/null || true
+```
 
 Convert to LightRFT format:
 ```bash
@@ -76,27 +81,31 @@ Run training:
 bash examples/r1_aqa/run_grpo_r1_aqa_qwen2_audio_7b.sh
 ```
 
-### Step 3: Evaluate on MMAU Test-Mini
+### Step 3: Evaluate on MMAU / MMAR
 
 ```bash
-# Using HuggingFace inference
-python examples/r1_aqa/eval_mmau.py \
-    --model_path results/lightrft-r1-aqa-grpo-training/<your_run>/  \
+# MMAU (test-mini)
+python examples/r1_aqa/eval.py \
+    --benchmark mmau \
+    --model_path results/lightrft-r1-aqa-grpo-training/<your_run>/ \
     --data_file /path/to/mmau-test-mini.json \
     --audio_dir /path/to/mmau/audio \
-    --out_file results/res_mmau_mini.json \
-    --engine hf
-
-# Using vLLM for faster inference
-python examples/r1_aqa/eval_mmau.py \
-    --model_path results/lightrft-r1-aqa-grpo-training/<your_run>/  \
-    --data_file /path/to/mmau-test-mini.json \
-    --audio_dir /path/to/mmau/audio \
-    --out_file results/res_mmau_mini.json \
-    --engine vllm
+    --out_file results/res_mmau_mini.json
 
 # Run MMAU official evaluation
 python /path/to/mmau/evaluation.py --input results/res_mmau_mini.json
+
+
+# MMAR
+python examples/r1_aqa/eval.py \
+    --benchmark mmar \
+    --model_path results/lightrft-r1-aqa-grpo-training/<your_run>/ \
+    --data_file /path/to/MMAR-meta.jsonl \
+    --audio_dir /path/to/mmar/audio \
+    --out_file results/res_mmar.jsonl
+
+# Run MMAR official evaluation
+python /path/to/mmar/code/evaluation.py --input results/res_mmar.jsonl
 ```
 
 ## Batch Size Constraints
@@ -161,14 +170,3 @@ Qwen2-Audio uses `Qwen2AudioForConditionalGeneration` (not `AutoModelForVision2S
 ### 4. Chat Template
 R1-AQA embeds audio URLs in the chat message content as `{"type": "audio", "audio_url": path}`. We preserve this format and use the Qwen2-Audio processor's `apply_chat_template` to convert it to the correct token format with audio placeholders.
 
-### 5. No `<think>` by Default
-R1-AQA's README notes that explicit reasoning did not show significant benefits for AQA tasks. The `<think>` mode is supported but disabled by default, matching R1-AQA's default configuration.
-
-## Verification Checklist
-
-- [ ] Data preprocessing reads JSONL and outputs valid parquet
-- [ ] Reward function produces correct scores for sample inputs
-- [ ] Training script launches without errors
-- [ ] GRPO advantage calculation works (check wandb/logs for reward metrics)
-- [ ] Evaluation script produces MMAU-compatible output format
-- [ ] Model prediction field matches MMAU evaluation.py expectations
